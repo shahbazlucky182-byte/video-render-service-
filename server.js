@@ -65,10 +65,11 @@ app.post('/render', (req, res) => {
       '-f', 'concat',
       '-safe', '0',
       '-i', path.join(workDir, 'list.txt'),
-      '-vf', `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920${drawtextFilters ? ',' + drawtextFilters : ''}`,
+      '-vf', `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280${drawtextFilters ? ',' + drawtextFilters : ''}`,
       '-c:v', 'libx264',
+      '-preset', 'ultrafast',
       '-pix_fmt', 'yuv420p',
-      '-r', '30',
+      '-r', '24',
       outputPath
     ];
 
