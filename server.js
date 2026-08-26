@@ -1,7 +1,7 @@
 // Free slideshow video render service
 // Takes: { images: ["<base64>", ...], captions: ["scene 1 text", ...], title: "..." }
-// Returns: an MP4 video (vertical 1080x1920) with each image shown for a few seconds
-// with the matching caption burned in as text, ready to upload straight to YouTube.
+// Saves the finished video to a fixed public URL (/videos/latest.mp4) that never changes,
+// so it can just be bookmarked and checked/downloaded manually each day.
 
 const express = require('express');
 const { v4: uuid } = require('uuid');
@@ -11,6 +11,10 @@ const { execFile } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
+
+const PUBLIC_DIR = path.join(__dirname, 'public', 'videos');
+fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+app.use('/videos', express.static(PUBLIC_DIR));
 
 const SECONDS_PER_IMAGE = 4;
 
@@ -34,21 +38,17 @@ app.post('/render', (req, res) => {
   fs.mkdirSync(workDir, { recursive: true });
 
   try {
-    // 1. Write each base64 image to disk
     images.forEach((b64, i) => {
       const clean = b64.replace(/^data:image\/\w+;base64,/, '');
       fs.writeFileSync(path.join(workDir, `img${i}.png`), Buffer.from(clean, 'base64'));
     });
 
-    // 2. Build an ffmpeg concat file (each image shown for SECONDS_PER_IMAGE seconds)
     const concatLines = images
       .map((_, i) => `file 'img${i}.png'\nduration ${SECONDS_PER_IMAGE}`)
       .join('\n');
-    // ffmpeg concat demuxer needs the last file repeated without a duration line
     const concatFile = `${concatLines}\nfile 'img${images.length - 1}.png'\n`;
     fs.writeFileSync(path.join(workDir, 'list.txt'), concatFile);
 
-    // 3. Build drawtext filters, one caption per image, timed to that image's window
     const capArray = Array.isArray(captions) ? captions : [];
     const drawtextFilters = images.map((_, i) => {
       const text = escapeForDrawtext(capArray[i] || '');
@@ -80,11 +80,17 @@ app.post('/render', (req, res) => {
         return res.status(500).json({ error: 'ffmpeg failed', details: stderr.slice(-2000) });
       }
 
-      res.set('Content-Type', 'video/mp4');
-      res.set('Content-Disposition', `attachment; filename="${jobId}.mp4"`);
-      const stream = fs.createReadStream(outputPath);
-      stream.pipe(res);
-      stream.on('close', () => fs.rmSync(workDir, { recursive: true, force: true }));
+      const publicPath = path.join(PUBLIC_DIR, 'latest.mp4');
+      fs.copyFileSync(outputPath, publicPath);
+      fs.rmSync(workDir, { recursive: true, force: true });
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      res.json({
+        status: 'ok',
+        title: title || 'Untitled',
+        videoUrl: `${baseUrl}/videos/latest.mp4?t=${Date.now()}`,
+        generatedAt: new Date().toISOString()
+      });
     });
   } catch (e) {
     fs.rmSync(workDir, { recursive: true, force: true });
