@@ -16,7 +16,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public', 'videos');
 fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 app.use('/videos', express.static(PUBLIC_DIR));
 
-const SECONDS_PER_IMAGE = 4;
+const SECONDS_PER_IMAGE = 5;
 
 function escapeForDrawtext(text) {
   return text
